@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: VPC Endpoint service stack.
+
+Parameters:
+  Application:
+    Type: String
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+## HostedZoneId:
+## Description: Hosted zone id
+## Type: AWS::Route53::HostedZone::Id
+## HostedZoneDomainName:
+## Description: Hosted zone domain name
+## Type: String
+#  # LogBucketName:
+#  #   Type: String
+
+Resources:
+## EndpointServiceNetworkLoadBalancerCert:
+## Type: AWS::CertificateManager::Certificate
+## Properties:
+## DomainName: !Sub ${Application}.${HostedZoneDomainName}
+## ValidationMethod: DNS
+## DomainValidationOptions:
+## - DomainName: !Ref HostedZoneDomainName
+## HostedZoneId: !Ref HostedZoneId
+
+  EndpointServiceNetworkLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub endpoint-nlb
+      Type: network
+      Scheme: internal
+      Subnets:
+        - !Select [ 0, !Ref PrivateSubnetIds ]
+        - !Select [ 1, !Ref PrivateSubnetIds ]
+        - !Select [ 2, !Ref PrivateSubnetIds ]
+      LoadBalancerAttributes:
+        - Key: deletion_protection.enabled
+          Value: "false"
+## Tags:
+## - Key: Name
+## Value: !Sub endpointsrv-${Application}-nlb-cfn
+
+  EndpointServiceTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub endpoint-nlb
+      Port: 80
+      Protocol: TCP
+      VpcId: !Ref VpcId
+      HealthCheckProtocol : HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "90"
+      ## Tags:
+      ##   - Key: Name
+      ##   - Value: !Sub endpointtsrv-${Application}-tg-cf
+
+  EndpointServiceNetworkLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+      TargetGroupArn: !Ref EndpointServiceTargetGroup
+      LoadBalancerArn: !Ref EndpointServiceNetworkLoadBalancer
+      Port: 443
+      Protocol: TLS
+      Certificates:
+        - CertificateArn: "arn:aws:acm:us-east-1:<AWS-account-no.>:certificate/e38f4a19-20ef-41e1-85b7-7debfef1"
+      SslPolicy: ELBSecurityPolicy-FS-1-2-Res-2019-08
+
+  EndpointService:
+    Type: AWS::EC2::VPCEndpointService
+    Properties:
+      AcceptanceRequired: True
+      NetworkLoadBalancerArns:
+        - !Ref EndpointServiceNetworkLoadBalancer
+
+  EndpointServicePermissions:
+    Type: AWS::EC2::VPCEndpointServicePermissions
+    Properties:
+      # AllowedPrincipals:
+       
+      ServiceId: !Ref EndpointService
+
+      
+
+
